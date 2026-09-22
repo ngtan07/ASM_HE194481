@@ -1,58 +1,55 @@
 const express = require('express');
-const fs = require('fs')
+const fs = require('fs');
+const path = require('path');
 
-const router = express();
-const path = require('path')
-
+const router = express.Router();
 
 router.use(express.json());
 router.use(express.urlencoded({ extended: true }));
 
-const filePath = path.join(__dirname, '../data.json')
+const filePath = path.join(__dirname, '../data.json');
 
-let dataRaw = {}
-let comments = []
-let articles = []
+let dataRaw = {};
+let comments = [];
+let articles = [];
 
 const readDataFile = () => {
     try {
-        const data = fs.readFileSync(filePath, 'utf-8')
-        dataRaw = JSON.parse(data)
+        const data = fs.readFileSync(filePath, 'utf-8');
+        dataRaw = JSON.parse(data);
+        comments = dataRaw.comments || [];
+        articles = dataRaw.articles || [];
     } catch (err) {
-        console.error(err.message)
-        comments = []
-        articles = []
-
+        console.error(err.message);
+        comments = [];
+        articles = [];
     }
-}
+};
 
-const writeDataFile = (newData) => {
+const writeDataFile = async () => {
     try {
-        fs.promises.writeFile(filePath, JSON.stringify(newData, null, 4))
+        const newData = { articles, comments };
+        await fs.promises.writeFile(filePath, JSON.stringify(newData, null, 4));
     } catch (err) {
-        console.error(err.message)
+        console.error(err.message);
     }
-}
+};
 
-
-readDataFile()
-comments = dataRaw.comments
-articles = dataRaw.articles
+readDataFile();
 
 // GET all
-router.get('/', async (req, res) => {
+router.get('/', (req, res) => {
     res.status(200).json(comments);
 });
 
-
 // GET by ID
-router.get('/:id', async (req, res) => {
+router.get('/:id', (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const comment = comments.find(c => c.id === id);
 
         if (!comment) {
-            return res.status(404).end('not found');
+            return res.status(404).json({ message: 'Not found' });
         }
         res.status(200).json(comment);
     } catch (err) {
@@ -62,54 +59,54 @@ router.get('/:id', async (req, res) => {
 
 // POST
 router.post('/', async (req, res) => {
+    const articleId = parseInt(req.body.articleId);
 
     const newComment = {
         id: comments.length > 0 ? comments[comments.length - 1].id + 1 : 1,
-        articleId: req.body.articleId,
+        articleId: articleId,
         content: req.body.content,
         author: req.body.author,
         date: req.body.date
     };
 
-    const article = articles.find(a => newComment.articleId === a.id)
+    const article = articles.find(a => a.id === articleId);
 
     if (article) {
         comments.push(newComment);
-        await writeDataFile(comments)
-        return res.status(201);
+        await writeDataFile();
+        return res.status(201).json(newComment);
     } else {
-        return res.status(404).end('not found');
+        return res.status(404).json({ message: 'Article not found' });
     }
-
 });
-
 
 // PUT
 router.put('/:id', async (req, res) => {
-    const id = parseInt(req.params.id)
+    const id = parseInt(req.params.id);
 
     const index = comments.findIndex(cmt => cmt.id === id);
-    if (index === -1) return res.status(404).end('not found');
+    if (index === -1) return res.status(404).json({ message: 'Not found' });
 
     comments[index] = {
         ...comments[index],
-        ...req.body
+        ...req.body,
+        id,
+        articleId: comments[index].articleId
     };
 
-    await writeDataFile(comments)
-    res.status(200);
+    await writeDataFile();
+    res.status(200).json(comments[index]);
 });
 
 // DELETE
 router.delete('/:id', async (req, res) => {
-    const id = parseInt(req.params.id)
+    const id = parseInt(req.params.id);
     const index = comments.findIndex(comment => comment.id === id);
-    if (index === -1) return res.status(404).end('not found');
+    if (index === -1) return res.status(404).json({ message: 'Not found' });
 
-    const deletedCmt = comments.splice(index, 1);
-    await writeDataFile(comments)
-    res.status(200);
+    comments.splice(index, 1);
+    await writeDataFile();
+    res.status(200).json({ message: 'Deleted successfully' });
 });
-
 
 module.exports = router;
